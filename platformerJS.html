@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>platformer
+    </title>
+    <style>
+        body {
+            margin: 0px;
+        }
+
+        canvas {
+            background-color: lightgray;
+        }
+
+        img {
+            display: none;
+        }
+    </style>
+</head>
+
+<body id="body">
+    <canvas id='canvas' width='1400' height="750"></canvas>
+    <img id="cannon" src="https://benspector3.github.io/projects/platformer/asset/cannon.png">
+    <img id="player" src="halleTrue.png">
+    <img id="projectile" src="https://benspector3.github.io/projects/platformer/asset/projectile.png">
+
+    <script>
+        var canvas = document.getElementById("canvas")
+        var ctx = canvas.getContext('2d')
+
+        var halleImage
+        var cannon
+        var platformImage
+        var animationDetails = {}
+
+        //setup variables
+        const walkAcceleration = 2.5 //how much is added to the speed each frame
+        const gravity = 1 //how much is subratced from speedY each frame
+        const friction = 1.5   //how much the player is slowed each frame
+        const frictionBoundry = .5 //an odd variable, look at the friction calculation to figure it out. Basicly it's the point at which the player stops slowing down and just stops moving. Without this speed approaches zero and never reaches it. 
+        const maxSpeed = 15 //maximum horizontal speed, not vertical
+        const playerJumpStrength = 20 //this is subtracted from the speedY each jump
+        const frameRate = 60
+        const playerScale = .8 //makes the player just a bit smaller, 20% smaller in fact. Doesn't affect the hitbox, just the image
+
+        //player Variables
+        var playerX = 50 //initial x and y of player
+        var playerY = 100
+        var playerSpeedX = 0
+        var playerSpeedY = 0
+        var playerHeight
+        var playerWidth
+        var hitDx
+        var hitDy
+        var HitBoxWidth = 50 * playerScale
+        var hitBoxHeight = 105 * playerScale
+        var playerOnGround = false
+        var playerFacingRight = true
+        var playerDeadAndDeathAnimationDone = false
+        var firstTimeSetup = true
+        var anyKeyPress = false
+        var upPress = false
+        var leftPress = false
+        var downPress = false
+        var rightPress = false
+        var spacePress = false
+
+
+        //player Animation variables
+        var animationTypes = {
+            duck: "duck",
+            flyingJump: "flying-jump",
+            frontDeath: "front-death",
+            frontIdle: 'front-idle',
+            jump: 'jump',
+            lazer: 'lazer',
+            run: 'run',
+            stop: 'stop',
+            walk: 'walk',
+        }
+        var currentAnimationType = animationTypes.run
+        var frameIndex = 0
+        var jumpTimer = 0
+        var debugVar = false
+
+        //platform variables
+        var platformX = []
+        var platformY = []
+        var platformWidth = []
+        var platformHeight = []
+
+        //cannon variables
+        var cannonX = []
+        var cannonY = []
+        var cannonRotation = []
+        var cannonProjectileCountdown = []
+        var cannonTimeBetweenShots = []
+        var cannonLocation = []
+        var cannonWidth = 118
+        var cannonHeight = 80
+
+        //projectile variables
+        var projectileX = []
+        var projectileY = []
+        var projectileSpeedX = []
+        var projectileSpeedY = []
+        const projectileWidth = 24
+        const projectileHeight = projectileWidth
+
+        //collectable variables
+        var collectableX = []
+        var collectableY = []
+        const collectableWidth = 40
+        const collectableHeight = 40
+        var collectableHover = 0
+        var collectableBounce = 1
+        var collectableGravity = .1
+        var collectableImages = []
+
+        //animation variables
+        var spriteHeight = 0
+        var spriteWidth = 0
+        var maxWidth = 0
+        var maxHeight = 0
+        var spriteX = 0
+        var spriteY = 0
+        var offsetX = 0
+        var offsetY = 0
+        var groundY = 0
+
+
+
+        window.addEventListener("load", loadJson);
+
+        function loadJson() {
+            getJSON("trueHallie.json", JsonFunction);//runs this before the setup because of timing things, it's annoying.
+        }
+
+        function setupGame() {
+
+            if (firstTimeSetup) {
+                halleImage = document.getElementById("player")
+                projectileImage = document.getElementById("projectile")
+                cannonImage = document.getElementById("cannon")
+                platformImage = document.getElementById("platform1")
+                document.addEventListener("keydown", keyDownPress, false)
+                document.addEventListener("keyup", keyuppress, false)
+                firstTimeSetup = false
+                //start game
+                setInterval(main, 1000 / frameRate)
+            }
+            //create walls
+            //don't  change these. or do, I'm a comment not a cop
+            createPlatform(-50, -50, canvas.width + 100, 50) //top 
+            createPlatform(-50, canvas.height - 10, canvas.width + 100, 200) //right
+            createPlatform(-50, -50, 50, canvas.height + 500) //bottom
+            createPlatform(canvas.width, -50, 50, canvas.height + 100)
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            //////////////////////////ONLY CHANGE BELOW THIS POINT//////////////////////////////////////////////////////////////////
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+            //create platforms
+            //createPlatform(x,y,width,height)
+            createPlatform(200, 150, 100, 10)
+            createPlatform(650, 450, 100, 40)
+            createPlatform(550, 600, 100, 40)
+            createPlatform(400, 300, 100, 40)
+            createPlatform(750, 200, 100, 40)
+            createPlatform(1000, 300, 100, 40)
+            createPlatform(1150, 200, 100, 40)
+            //you pick the wall you want the cannon on, then the position, then the time between shots in milliseconds
+            // your wall choices are: 'top' 'left' 'right' or 'bottom'
+            //createCannon("top",200,4)
+            createCannon("right", 450, 2000)
+            createCannon("top",  600, 2000)
+            //create collectables
+            //createCollectable("www.pictureOfFish.jpg",59,299)
+            createCollectable("https://upload.wikimedia.org/wikipedia/commons/b/bd/Test.svg", 650, 100)
+            createCollectable("data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4QC7RXhpZgAASUkqAAgAAAACAA4BAgCNAAAAJgAAABIBAwABAAAAAQAAAAAAAABLcmFndWpldmFjLCBTZXJiaWEgLSBKYW51YXJ5IDExLCAyMDE0OiBSdWJpaydzIEN1YmUgb24gYSB3aGl0ZSBiYWNrZ3JvdW5kLiBSdWJpaydzIEN1YmUgaW52ZW50ZWQgYnkgYSBIdW5nYXJpYW4gYXJjaGl0ZWN0IEVybj8gUnViaWsgaW4gMTk3NC7/7QDMUGhvdG9zaG9wIDMuMAA4QklNBAQAAAAAALAcAlAACFBvcGFydGljHAJ4AI1LcmFndWpldmFjLCBTZXJiaWEgLSBKYW51YXJ5IDExLCAyMDE0OiBSdWJpaydzIEN1YmUgb24gYSB3aGl0ZSBiYWNrZ3JvdW5kLiBSdWJpaydzIEN1YmUgaW52ZW50ZWQgYnkgYSBIdW5nYXJpYW4gYXJjaGl0ZWN0IEVybj8gUnViaWsgaW4gMTk3NC4cAm4ADEdldHR5IEltYWdlc//hA2todHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvAAk8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPgoJCTxyZGY6RGVzY3JpcHRpb24gcmRmOmFib3V0PSIiIHhtbG5zOnBob3Rvc2hvcD0iaHR0cDovL25zLmFkb2JlLmNvbS9waG90b3Nob3AvMS4wLyIgeG1sbnM6SXB0YzR4bXBDb3JlPSJodHRwOi8vaXB0Yy5vcmcvc3RkL0lwdGM0eG1wQ29yZS8xLjAveG1sbnMvIiB4bWxuczpHZXR0eUltYWdlc0dJRlQ9Imh0dHA6Ly94bXAuZ2V0dHlpbWFnZXMuY29tL2dpZnQvMS4wLyIgeG1sbnM6ZGM9Imh0dHA6Ly9wdXJsLm9yZy9kYy9lbGVtZW50cy8xLjEvIiB4bWxuczpwbHVzPSJodHRwOi8vbnMudXNlcGx1cy5vcmcvbGRmL3htcC8xLjAvIiB4bWxuczppcHRjRXh0PSJodHRwOi8vaXB0Yy5vcmcvc3RkL0lwdGM0eG1wRXh0LzIwMDgtMDItMjkvIiBwaG90b3Nob3A6Q3JlZGl0PSJHZXR0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", 400, 100)
+            createCollectable("data:image/png;base64,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", 1050, 100)
+            createCollectable("data:image/jpeg;base64,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", 1200, 100)
+            createCollectable("data:image/jpeg;base64,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", 759, 100)
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            //////////////////////////ONLY CHANGE ABOVE THIS POINT//////////////////////////////////////////////////////////////////
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+        }
+
+        function main() {
+            ctx.clearRect(0, 0, 1400, 750) //erase the screen so you can draw everything in it's most current position. Get rid of this line to see why we need it
+
+
+            if (playerDeadAndDeathAnimationDone) {
+                deathOfPlayer()
+                return
+            }
+
+            drawPlatforms()
+            drawProjectiles()
+            drawCannons()
+            drawCollectables()
+            playerFrictionAndGravity()
+
+            playerX = playerX + playerSpeedX
+            playerY = playerY + playerSpeedY
+
+            collision()//checks if the player will collide with something in this frame
+            keyboardControlActions() //keyboard controls. 
+            projectileCollision() //checks if the player is getting hit by a projectile in the next frame
+            collectablesCollide() //checks if player has touched a collectable
+
+
+            animate() //this changes halle's picture to the next frame so it looks animated. 
+            // debug()//debugging values. Comment this out when not debugging. 
+            drawRobot() //this actually displays the image of the robot. 
+
+            // quick note on the order of functions
+            // You must have all functions in this general order
+            // First you change the player x and y
+            // then you do collisions
+            // then you do keyboard controls
+            // lastly you draw everything
+            // keyboard controls before collisions means you can't move. changing player x and y before collisions make things jittery.
+            //order is super important. If things seem weird, try changing the order. 
+        }
+
+        function changeAnimationType() {
+            if (currentAnimationType === animationTypes.frontDeath) {
+                if (frameIndex > animationDetails[currentAnimationType].coordinates.length) {
+                    playerDeadAndDeathAnimationDone = true
+                }
+                return
+            }
+            if (jumpTimer > 0 && !playerOnGround) {
+                currentAnimationType = animationTypes.jump
+                jumpTimer--
+            } else {
+                jumpTimer = 0
+                if (Math.abs(playerSpeedX) > 0) {//if you're moving then change animation to walking or running
+                    if (leftPress || rightPress) {
+                        currentAnimationType = animationTypes.run
+                    } else {
+                        currentAnimationType = animationTypes.walk
+                    }
+                } else if (playerOnGround) {
+                    if (currentAnimationType !== animationTypes.frontIdle) {
+                        currentAnimationType = animationTypes.frontIdle
+                        // }
+                    }
+                }
+            }
+
+        }
+
+        function debug() {
+            debugVar = true
+
+            ctx.fillText("xs" + playerSpeedX + " x: " + playerX, 500, 200)
+            ctx.fillText("ys" + playerSpeedY + " y: " + playerY, 500, 250)
+
+            ctx.fillStyle = 'black'
+            ctx.fillText("on ground " + playerOnGround, 150 + playerX, playerY - 20)
+            ctx.fillText("hitx" + hitDx, 150 + playerX, playerY)
+            ctx.fillText("hity" + hitDy, 150 + playerX, playerY + 20)
+            ctx.fillText("offsetx" + offsetX, 150 + playerX, playerY + 40)
+            ctx.fillText("offsetY" + offsetY, 150 + playerX, playerY + 60)
+            // ctx.fillText("hitx" + hitDx, 150 + playerX, playerY + 80)
+            // ctx.fillText("hitx" + hitDx, 150 + playerX, playerY + 100)
+
+            ctx.fillStyle = 'grey'
+            ctx.fillRect(playerX, playerY, playerWidth, playerHeight)
+
+            //debug showing collision
+            ctx.fillStyle = "yellow"
+            ctx.fillRect(500, 100, 50, 50)
+
+            ctx.fillStyle = "green"
+            ctx.fillRect(playerX, playerY, HitBoxWidth, hitBoxHeight)
+
+            if (collision() !== undefined) {
+                ctx.fillStyle = "yellow"
+                ctx.fillRect(playerX, playerY - 50, 10, 10)
+
+            }
+        }
+
+        function animate() {
+
+            var previousFrameRate = frameIndex
+            frameIndex = frameIndex + (18 / frameRate) //+ .5 * Math.abs(playerSpeedX / maxSpeed) //only advance the animation every other frame
+            if (Math.floor(previousFrameRate) === Math.floor(frameIndex)) {
+                return
+            }
+            changeAnimationType()
+            if (frameIndex > animationDetails[currentAnimationType].coordinates.length) {
+                frameIndex = 0
+            }
+            spriteX = animationDetails[currentAnimationType].coordinates[Math.floor(frameIndex)].sx
+            spriteY = animationDetails[currentAnimationType].coordinates[Math.floor(frameIndex)].sy
+            spriteWidth = animationDetails[currentAnimationType].coordinates[Math.floor(frameIndex)].width
+            spriteHeight = animationDetails[currentAnimationType].coordinates[Math.floor(frameIndex)].height
+            maxWidth = animationDetails[currentAnimationType].maxWidth * playerScale //you have to multiply all these by scale so that when you change the size of the player all the animations scale too
+            maxHeight = animationDetails[currentAnimationType].maxHeight * playerScale
+            offsetX = animationDetails[currentAnimationType].coordinates[Math.floor(frameIndex)].xoffset * playerScale
+            offsetY = animationDetails[currentAnimationType].coordinates[Math.floor(frameIndex)].yoffset * playerScale
+            playerWidth = animationDetails[currentAnimationType].coordinates[Math.floor(frameIndex)].width * playerScale
+            playerHeight = animationDetails[currentAnimationType].coordinates[Math.floor(frameIndex)].height * playerScale
+            hitDx = animationDetails[currentAnimationType].coordinates[Math.floor(frameIndex)].hitDx * playerScale
+            hitDy = animationDetails[currentAnimationType].coordinates[Math.floor(frameIndex)].hitDy * playerScale
+
+        }
+
+        function drawRobot() {
+            //ctx.drawImage(imageVaribale, sourceY, SourceX, sourceWidth, sourceHeight, canvasX, canvasY, finalWidth, finalHeight)
+            //https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/drawImage
+            //you only need the extra four source arguments if you want to only display a portion of the picture, if you want to show the whole picture you can just do drawImage(imageVar, canvasx, canvasy, width,height)
+            //next section draws hallie. There is an if so that the image is reversed based on the direction of travel
+
+            //there is also a hitdx and hitdy, those are offsets for the animation, enable debugger to see the true hitbox in green
+            //you can enable the debug view by uncommenting the debug() function call in the main function. 
+            if (playerDeadAndDeathAnimationDone) {
+                return //return stops the function, we don't want to draw the robot after we die
+            }
+
+            if (playerFacingRight) {
+                ctx.drawImage(halleImage, spriteX, spriteY, spriteWidth, spriteHeight, playerX - hitDx, playerY - hitDy, playerWidth, playerHeight)
+            } else {//for running to the left you mirror the image. you also have to draw the 
+                ctx.save();
+                ctx.scale(-1, 1); //mirror the entire canvas
+                ctx.drawImage(halleImage, spriteX, spriteY, spriteWidth, spriteHeight, -playerX - playerWidth + hitDx, playerY - hitDy, playerWidth, playerHeight)
+                ctx.restore();//put the canvas back to normal
+            }
+        }
+
+        function collision() {
+            playerOnGround = false //you reset this every frame, if the player is actually on the ground the resolveCollision function will set it to true
+            var result = undefined
+            for (var i = 0; i < platformX.length; i++) { //check every platform
+                if (playerX + HitBoxWidth > platformX[i]) { //if the right side of the player is inside of the left side of the platform
+                    if (playerX < platformX[i] + platformWidth[i]) { //and the left side of the player is inside of the right side of the platform
+                        if (playerY < platformY[i] + platformHeight[i]) { //top of player is above bottom of platform
+                            if (playerY + hitBoxHeight > platformY[i]) {//bottom of player is below top of platform
+                                //now that we know we have collided we figure out the direction of collision
+                                result = resloveCollision(platformX[i], platformY[i], platformWidth[i], platformHeight[i])
+                            }
+                        }
+                    }
+                }
+            }
+            return result
+
+        }
+
+        function resloveCollision(objx, objy, objw, objh) {
+            //this is the return value
+            let collisionDirection = ""
+            //found here https://stackoverflow.com/questions/38648693/resolve-collision-of-two-2d-elements
+            //first we find the distance between the center of the object and the player
+            let dx = (playerX + (HitBoxWidth / 2)) - (objx + (objw / 2))
+            let dy = (playerY + (hitBoxHeight / 2)) - (objy + (objh / 2))
+
+            //get half widths of each item
+            //i'm honestly not 100% certian why this step is in there, but it works.
+            let halfWidth = (HitBoxWidth / 2) + (objw / 2)
+            let halfHeight = (hitBoxHeight / 2) + (objh / 2)
+
+            // if the x and y vector are less than the half width or half height,
+            // they we must be inside the object, causing a collision
+            //         if (Math.abs(dx) <= halfWidth) {
+            // if (Math.abs(dy) <= halfHeight) {
+            //what side are we colliding on?
+            let originx = halfWidth - Math.abs(dx)
+            let originy = halfHeight - Math.abs(dy)
+
+            if (debugVar) {
+                //debug
+                ctx.strokeStyle = 'blue'
+                ctx.beginPath()
+                ctx.moveTo(objx + dx, objy)
+                ctx.lineTo(objx, objy)
+                ctx.lineTo(objx, objy + dy)
+                ctx.stroke()
+                ctx.fillStyle = "rbga(252,186,3,.3)"
+                ctx.fillRect(playerX, playerY, HitBoxWidth, hitBoxHeight)
+            }
+
+            if (originx >= originy) {
+                if (dy > 0) {                    //bottom collision
+                    collisionDirection = 'bottom'
+                    playerY = playerY + originy + 1
+                    playerSpeedY = 0
+                } else {                         //top collision
+                    collisionDirection = 'top'
+                    playerY = playerY - originy
+                    playerSpeedY = 0
+                    playerOnGround = true
+                }
+            } else {
+                if (dx > 0) {                    //left collision
+                    collisionDirection = 'left'
+                    playerX = playerX + originx
+                    playerSpeedX = 0
+                } else {                        //right collision
+                    collisionDirection = 'right'
+                    playerX = playerX - originx
+                    playerSpeedX = 0
+                }
+            }
+
+            return collisionDirection
+
+        }
+
+        function projectileCollision() {
+            if (currentAnimationType === animationTypes.frontDeath) { //checking if the player is dead
+                //once you die we don't need you to die again, so we stop checking
+                return
+            }
+
+            //this deletes any projectiles that go off the screen
+            for (var i = 0; i < projectileX.length; i++) {
+                if (projectileX[i] > canvas.width + 100) {
+                    projectileX.splice(i, 1)//splice deletes an item from an array
+                    projectileY.splice(i, 1)
+                    projectileSpeedX.splice(i, 1)
+                    projectileSpeedY.splice(i, 1)
+                }
+                if (projectileX[i] < -100) {
+                    projectileX.splice(i, 1)
+                    projectileY.splice(i, 1)
+                    projectileSpeedX.splice(i, 1)
+                    projectileSpeedY.splice(i, 1)
+                }
+                if (projectileY[i] > canvas.height + 100) {
+                    projectileX.splice(i, 1)
+                    projectileY.splice(i, 1)
+                    projectileSpeedX.splice(i, 1)
+                    projectileSpeedY.splice(i, 1)
+                }
+                if (projectileY[i] < -100) {
+                    projectileX.splice(i, 1)
+                    projectileY.splice(i, 1)
+                    projectileSpeedX.splice(i, 1)
+                    projectileSpeedY.splice(i, 1)
+                }
+
+                //collision with the player
+                //I used the collision function because it's eaiser to reuse things
+                if (projectileX[i] < playerX + HitBoxWidth) {
+                    if (projectileX[i] + projectileWidth > playerX) {
+                        if (projectileY[i] < playerY + hitBoxHeight) {
+                            if (projectileY[i] + projectileHeight > playerY) {
+                                currentAnimationType = animationTypes.frontDeath
+                                frameIndex = 0
+                            }
+                        }
+                    }
+                }
+
+            }
+        }
+
+        function deathOfPlayer() {
+            ctx.fillStyle = 'grey'
+            ctx.fillRect(canvas.width / 4, canvas.height / 6, canvas.width / 2, canvas.height / 2)
+            ctx.fillStyle = 'black'
+            ctx.font = '800% serif'
+            ctx.fillText("Your're are dead", canvas.width / 4, canvas.height / 6 + canvas.height / 5, canvas.width / 16 * 14)
+            ctx.font = '500% serif'
+            ctx.fillText("hit the any key to alive", canvas.width / 4, canvas.height / 6 + canvas.height / 3, canvas.width / 16 * 14)
+            if (anyKeyPress) {
+                anyKeyPress = false
+                resetVariables()
+            }
+        }
+
+        function playerFrictionAndGravity() {
+            //max speed limiter for ground
+            if (playerSpeedX > maxSpeed) { //you have to regulate both forwards and backwards speed
+                playerSpeedX = maxSpeed
+            } else if (playerSpeedX < -maxSpeed) {
+                playerSpeedX = -maxSpeed
+            }
+
+            //friction
+            if (Math.abs(playerSpeedX) < 1) { //this makes sure that the player actually stops when the speed gets low enough
+                //otherwise if you just always reduce speed it will just end up jiggling
+                playerSpeedX = 0
+            }
+            else if (playerSpeedX > 0) {
+                playerSpeedX = playerSpeedX - friction
+            } else {
+                playerSpeedX = playerSpeedX + friction
+            }
+
+
+            if (playerOnGround === false) {
+                playerSpeedY = playerSpeedY + gravity
+            }
+
+
+        }
+
+        function drawPlatforms() {
+            for (var i = 0; i < platformX.length; i++) {
+                ctx.fillStyle = "grey"
+                ctx.fillRect(platformX[i], platformY[i], platformWidth[i], platformHeight[i])
+            }
+        }
+
+        function drawProjectiles() {
+            for (var i = 0; i < projectileX.length; i++) {
+                ctx.drawImage(projectileImage, projectileX[i], projectileY[i], projectileWidth, projectileHeight)
+                projectileX[i] = projectileX[i] + projectileSpeedX[i]
+                projectileY[i] = projectileY[i] + projectileSpeedY[i]
+            }
+        }
+
+        function drawCannons() {
+            for (var i = 0; i < cannonX.length; i++) {
+
+                if (cannonProjectileCountdown[i] >= cannonTimeBetweenShots[i]) {
+                    cannonProjectileCountdown[i] = 0
+                    createProjectile(cannonLocation[i], cannonX[i], cannonY[i])
+                } else {
+                    cannonProjectileCountdown[i] = cannonProjectileCountdown[i] + 1
+                }
+
+                ctx.fillStyle = "grey"
+                //canvas rotation is trash, here be dragons
+                ctx.save(); //save the current translation of the screen. 
+                ctx.translate(cannonX[i], cannonY[i]); //you are moving the top left of the screen to the pictures location, this is because you can't rotate the image, you have to rotate the whole page
+                ctx.rotate(cannonRotation[i] * Math.PI / 180); //then you rotate. rotation is centered on 0,0 on the canvas, which is why we moved the picture to 0,0 with translate(x,y)
+                ctx.drawImage(cannonImage, 0, 0, cannonWidth, cannonHeight) //you draw the image on the rotated canvas. as of this line, the picture is straight and the rest of the page is rotated
+                //also the previous line uses -width / 2 so that the picture is centered. This will mean that (0,0) is at the exact center of the image
+                ctx.translate(-cannonX[i], -cannonY[i]); //the reverse of the previous translate, this moves the page back to the correct place so that the image is no longer at (0,0)
+                ctx.restore(); //this unrotates the canvas so the canvas is straight, but now since you did that the picture looks rotated
+                //rotation is the worst thing to ever exist.
+
+            }
+        }
+
+        function drawCollectables() {
+            for (var i = 0; i < collectableImages.length; i++) {
+                if (collectableImages[i].collected !== true) {
+                    //draw on screen if not collected
+                    ctx.drawImage(collectableImages[i].image, collectableImages[i].x, collectableImages[i].y, collectableWidth, collectableHeight)
+                } else {
+                    //draw the icons at the top if collected
+                    if (collectableImages[i].alpha > .4) {
+                        collectableImages[i].alpha = collectableImages[i].alpha - .007
+                    }
+                    ctx.globalAlpha = collectableImages[i].alpha
+                    ctx.drawImage(collectableImages[i].image, 200 + 100 * i, 10, collectableWidth, collectableHeight)
+                    ctx.globalAlpha = 1
+                }
+
+                //gravity
+                collectableImages[i].speedy = collectableImages[i].speedy + collectableGravity
+                collectableImages[i].y = collectableImages[i].y + collectableImages[i].speedy
+
+                // check for collision with platforms in order to bounce
+                for (var j = 0; j < platformX.length; j++) { //check every platform
+                    if (collectableImages[i].x + collectableWidth > platformX[j]) { //if the right side of the collectable is inside of the left side of the platform
+                        if (collectableImages[i].x < platformX[j] + platformWidth[j]) { //and the left side of the collectable is inside of the right side of the platform
+                            if (collectableImages[i].y < platformY[j] + platformHeight[j]) { //top of collectable is above bottom of platform
+                                if (collectableImages[i].y + collectableHeight > platformY[j]) {//bottom of collectable is below top of platform
+                                    collectableImages[i].speedy = -5
+                                }
+                            }
+                        }
+                    }
+                }
+
+
+            }
+        }
+
+        function collectablesCollide() {
+            for (var i = 0; i < collectableImages.length; i++) {
+                if (collectableImages[i].x + collectableWidth > playerX) { //if the right side of the collectable is inside of the left side of the platform
+                    if (collectableImages[i].x < playerX + HitBoxWidth) { //and the left side of the collectable is inside of the right side of the platform
+                        if (collectableImages[i].y < playerY + hitBoxHeight) { //top of collectable is above bottom of platform
+                            if (collectableImages[i].y + collectableHeight > playerY) {//bottom of collectable is below top of platform
+                                collectableImages[i].collected = true
+                            }
+                        }
+                    }
+                }
+            }
+
+        }
+
+        function createPlatform(x, y, width, height) {
+            platformX.push(x)
+            platformY.push(y)
+            platformHeight.push(height)
+            platformWidth.push(width)
+        }
+
+        function createCannon(wallLocation, position, timeBetweenShots) {
+
+            cannonTimeBetweenShots.push(timeBetweenShots / (1000 / frameRate))
+            cannonProjectileCountdown.push(0)
+            cannonLocation.push(wallLocation)
+
+            if (wallLocation === 'top') {
+                cannonX.push(position)
+                cannonY.push(cannonHeight)//because of rotation the position is weird. rotation stinks
+                cannonRotation.push(180)//I'm using degrees even though rotation used radians, we convert to radians when we draw it
+            } else if (wallLocation === 'bottom') {
+                cannonX.push(position)
+                cannonY.push(canvas.height - cannonHeight)
+                cannonRotation.push(0)
+            } else if (wallLocation === 'left') {
+                cannonX.push(cannonHeight)
+                cannonY.push(position)
+                cannonRotation.push(90)
+            } else if (wallLocation === 'right') {
+                cannonX.push(canvas.width - cannonHeight)
+                cannonY.push(position)
+                cannonRotation.push(270)
+            }
+        }
+
+        function createCollectable(url, x, y) {
+            if (url !== "") {
+                var img = document.createElement('img');
+                img.src = url;
+                img.id = collectableImages.length + "image"
+                collectableImages.push({
+                    image: img,
+                    x: x,
+                    y: y,
+                    speedy: 0,
+                    collected: false,
+                    alpha: 2,
+                })
+            }
+        }
+
+        function createProjectile(wallLocation, x, y) {
+
+            if (currentAnimationType === animationTypes.frontDeath) { //checking if the player is dead
+                //once you die we don't need you to die again, so we stop checking
+                return
+            }
+
+            if (wallLocation === 'top') {
+                projectileX.push(x - 71.5)
+                projectileY.push(y - 55)
+                projectileSpeedX.push(0)
+                projectileSpeedY.push(5)
+            } else if (wallLocation === 'bottom') {
+                projectileX.push(x + 47)
+                projectileY.push(y + 50)
+                projectileSpeedX.push(0)
+                projectileSpeedY.push(-5)
+            } else if (wallLocation === 'left') {
+                projectileX.push(x - 80)
+                projectileY.push(y + 46)
+                projectileSpeedX.push(5)
+                projectileSpeedY.push(0)
+            } else if (wallLocation === 'right') {
+                projectileX.push(x + 40)
+                projectileY.push(y - 71.5)
+                projectileSpeedX.push(-5)
+                projectileSpeedY.push(0)
+            }
+        }
+
+        function keyboardControlActions() {
+            anyKeyPress = false //keyboardHandler will set this to true if you press any key. setting the variable to false here makes sure that key press dosen't stick around.
+            //this is used for respawning, basicly if you hit any key after you die this variable will be set to true and you will respawn. 
+
+            if (currentAnimationType === animationTypes.frontDeath) {
+                return
+            }
+
+            if (upPress) {
+                //playerSpeedY -= walkspeed
+            }
+            if (downPress) {
+                //playerSpeedY += walkspeed
+            }
+            if (leftPress) {
+                playerSpeedX -= walkAcceleration
+                playerFacingRight = false
+            }
+            if (rightPress) {
+                playerSpeedX += walkAcceleration
+                playerFacingRight = true
+            }
+            if (spacePress) {
+                if (playerOnGround) { //this only lets you jump if you are on the ground
+                    playerSpeedY = playerSpeedY - playerJumpStrength
+                    jumpTimer = 19 //this counts how many frames to have the jump last. 
+                    playerOnGround = false //bug fix for jump animation, you have to change this or the jump animation doesn't work
+                    frameIndex = 4
+                }
+            }
+
+
+
+        }
+
+        function keyDownPress(e) { //the e in this parenthesis is a parameter, it contains information about what key you pressed. e is also short for event in this case. 
+            anyKeyPress = true
+            if (e.key === "ArrowUp" || e.key === "w") { // || means or. || is or && is and. if one or the other is true, then true. this if is asking if the key is w or arrowup
+                upPress = true
+            }
+            if (e.key === "ArrowLeft" || e.key === "a") {
+                leftPress = true
+            }
+            if (e.key === "ArrowDown" || e.key === "s") {
+                downPress = true
+            }
+            if (e.key === "ArrowRight" || e.key === "d") {
+                rightPress = true
+            }
+            if (e.key === " ") {
+                spacePress = true
+            }
+
+        }
+
+        function keyuppress(e) { //keydown and keyup are both needed because both are important. think of a gas pedal: you want to car to know you pressed down the pedal, and you REALLY want it to know when you let up on the gas. 
+            if (e.key === "ArrowUp" || e.key === "w") {
+                upPress = false
+            }
+            if (e.key === "ArrowLeft" || e.key === "a") {
+                leftPress = false
+            }
+            if (e.key === "ArrowDown" || e.key === "s") {
+                downPress = false
+            }
+            if (e.key === "ArrowRight" || e.key === "d") {
+                rightPress = false
+            }
+            if (e.key === " ") {
+                spacePress = false
+            }
+        }
+
+        var getJSON = function (url, callback) {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", url, true);
+            xhr.responseType = "json";
+            xhr.onload = function () {
+                var status = xhr.status;
+                if (status === 200) {
+                    callback(null, xhr.response);
+                    setupGame()
+                } else {
+                    callback(status, xhr.response);
+                }
+            };
+            xhr.send();
+        };
+
+        function JsonFunction(status, response) {
+
+            /*
+                diagram of the json
+                top level is the name of the animation
+                also don't you dare complain, this is operation sparks fault for making the animation so complicated.
+                animation name{
+                    coordinates{
+                        sx: xpadding,
+                        sy: ypadding,
+                        width: cords.swidth,
+                        height: cords.sheight,
+                        hitWidth: 50, //cords.width,
+                        hitHeight: 105,//cords.height,
+                        hitDx: 0,
+                        hitDy: 0,
+                        xoffset: xoffset,
+                        yoffset: yoffset,
+                    }
+                    maxHeight: largest size the sprite can be
+                    maxWidth: 
+                }
+            */
+            console.log(response)
+            animationDetails = response
+        }
+
+        function resetVariables() {
+            playerX = 100 //initial x and y of player
+            playerY = 100
+            playerSpeedX = 0
+            playerSpeedY = 0
+            playerDeadAndDeathAnimationDone = false
+            anyKeyPress = false
+            upPress = false
+            leftPress = false
+            downPress = false
+            rightPress = false
+            spacePress = false
+            currentAnimationType = animationTypes.run
+            frameIndex = 0
+            jumpTimer = 0
+            platformX = []
+            platformY = []
+            platformWidth = []
+            platformHeight = []
+            cannonX = []
+            cannonY = []
+            cannonRotation = []
+            cannonProjectileCountdown = []
+            cannonTimeBetweenShots = []
+            cannonLocation = []
+            projectileX = []
+            projectileY = []
+            projectileSpeedX = []
+            projectileSpeedY = []
+            collectableX = []
+            collectableY = []
+            collectableType = []
+            collectableBounce = []
+            collectableImages = []
+
+            setupGame()
+        }
+
+    </script>
+</body>
+
+</html>
